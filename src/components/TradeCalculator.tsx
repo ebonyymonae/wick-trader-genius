@@ -51,10 +51,11 @@ const TradeCalculator: React.FC<TradeCalculatorProps> = ({
   
   const pipValue = getPipValue(symbol);
   
-  // Check if we should recommend a trade type based on price vs levels
+  // Check if we should recommend a trade type based on price vs levels from 15 min timeframe
   useEffect(() => {
     if (!lastCandle) return;
     
+    // Using 15-minute timeframe for trade triggers
     if (lastCandle.close > resistanceLevel) {
       setTradeType('BUY');
     } else if (lastCandle.close < supportLevel) {
@@ -79,41 +80,51 @@ const TradeCalculator: React.FC<TradeCalculatorProps> = ({
     const risk = (accountBalance * riskPercentage) / 100;
     setRiskAmount(risk);
     
-    // Calculate position size and levels
-    const pivotLevel = tradeType === 'BUY' ? resistanceLevel : supportLevel;
-    const wickLevel = tradeType === 'BUY' ? supportLevel : resistanceLevel;
+    // Calculate position size based on 50 pip stop loss
+    const fixedStopLossPips = 50;
+    const stopLossBuffer = fixedStopLossPips * pipValue;
     
-    const levels = calculateLevels(
-      currentPrice,
-      tradeType,
-      wickLevel,
-      pipValue,
-      15, // 15 pips buffer
-      1.5,
-      2
-    );
+    // Set stop loss at 50 pips away from entry
+    const newStopLoss = tradeType === 'BUY' 
+      ? currentPrice - stopLossBuffer 
+      : currentPrice + stopLossBuffer;
     
-    setStopLoss(levels.stopLoss);
-    setTakeProfit1(levels.takeProfit1);
-    setTakeProfit2(levels.takeProfit2);
+    setStopLoss(newStopLoss);
     
-    // Calculate potential profits
+    // Calculate take profit levels based on risk:reward ratios
+    const riskDistance = Math.abs(currentPrice - newStopLoss);
+    const tp1Distance = riskDistance * 1.5;
+    const tp2Distance = riskDistance * 2;
+    
+    const newTakeProfit1 = tradeType === 'BUY'
+      ? currentPrice + tp1Distance
+      : currentPrice - tp1Distance;
+      
+    const newTakeProfit2 = tradeType === 'BUY'
+      ? currentPrice + tp2Distance
+      : currentPrice - tp2Distance;
+    
+    setTakeProfit1(newTakeProfit1);
+    setTakeProfit2(newTakeProfit2);
+    
+    // Calculate position size
     const posSize = calculatePositionSize(
       accountBalance,
       riskPercentage,
       currentPrice,
-      levels.stopLoss,
+      newStopLoss,
       pipValue
     );
     
     setPositionSize(posSize);
     
-    const profit1 = Math.abs(levels.takeProfit1 - currentPrice) / pipValue * posSize;
-    const profit2 = Math.abs(levels.takeProfit2 - currentPrice) / pipValue * posSize;
+    // Calculate potential profits
+    const profit1 = Math.abs(newTakeProfit1 - currentPrice) / pipValue * posSize;
+    const profit2 = Math.abs(newTakeProfit2 - currentPrice) / pipValue * posSize;
     
     setPotentialProfit1(profit1);
     setPotentialProfit2(profit2);
-  }, [tradeType, currentPrice, supportLevel, resistanceLevel, riskPercentage, accountBalance, pipValue, sma50, rsi]);
+  }, [tradeType, currentPrice, accountBalance, pipValue, sma50, rsi, riskPercentage]);
   
   const handlePlaceTrade = () => {
     if (!tradeType || !isTradeValid) return;
@@ -208,7 +219,7 @@ const TradeCalculator: React.FC<TradeCalculatorProps> = ({
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="stopLoss">Stop Loss</Label>
+              <Label htmlFor="stopLoss">Stop Loss (50 pips)</Label>
               <Input 
                 id="stopLoss" 
                 value={formatPrice(stopLoss, symbol)} 

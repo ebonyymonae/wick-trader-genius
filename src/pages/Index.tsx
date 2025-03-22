@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import TradingView from '@/components/TradingView';
 import TradeCalculator from '@/components/TradeCalculator';
@@ -25,16 +24,13 @@ const Index = () => {
   const [keyLevels, setKeyLevels] = useState(identifyKeyLevels(candles));
   const [tradeHistory, setTradeHistory] = useState<TradeRecord[]>(initialTradeHistory);
   
-  // Get current price from latest candle
   const currentPrice = candles[candles.length - 1]?.close || 0;
   
-  // Get latest indicator values
   const latestSma50 = indicators.sma50[indicators.sma50.length - 1]?.value || 0;
   const latestEma9 = indicators.ema9[indicators.ema9.length - 1]?.value || 0;
   const latestEma21 = indicators.ema21[indicators.ema21.length - 1]?.value || 0;
   const latestRsi = indicators.rsi14[indicators.rsi14.length - 1]?.value || 50;
   
-  // Handle trading pair change
   useEffect(() => {
     const newCandles = generateMockCandles(activePair);
     const newIndicators = generateIndicators(newCandles);
@@ -50,7 +46,6 @@ const Index = () => {
     });
   }, [activePair, toast]);
   
-  // Handle placing a new trade
   const handlePlaceTrade = (tradeDetails: any) => {
     const newTrade: TradeRecord = {
       id: `T${Math.floor(Math.random() * 10000)}`,
@@ -98,7 +93,6 @@ const Index = () => {
         </header>
         
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-          {/* Left sidebar */}
           <div className="lg:col-span-1 space-y-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
             <TradingControls 
               tradingPairs={tradingPairs}
@@ -109,9 +103,7 @@ const Index = () => {
             <SessionTimer />
           </div>
           
-          {/* Main content */}
           <div className="lg:col-span-3 space-y-6">
-            {/* Chart */}
             <div className="animate-slide-up" style={{ animationDelay: '0.2s' }}>
               <TradingView 
                 symbol={activePair}
@@ -126,7 +118,6 @@ const Index = () => {
               />
             </div>
             
-            {/* Bottom row */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="animate-slide-up" style={{ animationDelay: '0.3s' }}>
                 <TechnicalIndicators 
@@ -148,6 +139,7 @@ const Index = () => {
                   sma50={latestSma50}
                   rsi={latestRsi}
                   lastCandle={candles[candles.length - 1]}
+                  candles={candles}
                   onPlaceTrade={handlePlaceTrade}
                 />
               </div>

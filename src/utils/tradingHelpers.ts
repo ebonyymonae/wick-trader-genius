@@ -1,4 +1,3 @@
-
 import { CandleData, PairInfo } from './mockData';
 
 // Identify key support and resistance levels based on previous day candles
@@ -13,6 +12,52 @@ export const identifyKeyLevels = (candles: CandleData[]): { support: number; res
     support: previousDayCandle.low,
     resistance: previousDayCandle.high,
   };
+};
+
+// Calculate the wick box for the top wick strategy
+export const calculateWickBox = (candles: CandleData[]): { bottom: number; top: number; halfway: number } => {
+  if (candles.length < 2) {
+    return { bottom: 0, top: 0, halfway: 0 };
+  }
+  
+  // Get previous day's candle
+  const previousDayCandle = candles[candles.length - 2];
+  
+  // Calculate top wick size
+  const topWickBottom = Math.max(previousDayCandle.open, previousDayCandle.close);
+  const topWickTop = previousDayCandle.high;
+  
+  // Calculate the halfway point of the wick
+  const halfway = topWickBottom + ((topWickTop - topWickBottom) / 2);
+  
+  return {
+    bottom: topWickBottom,
+    top: topWickTop,
+    halfway
+  };
+};
+
+// Determine if a trade should be executed based on the wick box strategy
+export const shouldExecuteTrade = (
+  currentPrice: number,
+  wickBox: { bottom: number; top: number; halfway: number }
+): { shouldTrade: boolean; tradeType: 'BUY' | 'SELL' | null } => {
+  // Don't trade if price is beyond the halfway point
+  if (currentPrice > wickBox.halfway) {
+    return { shouldTrade: false, tradeType: null };
+  }
+  
+  // If price is approaching the halfway mark from below, this is a potential sell
+  if (currentPrice < wickBox.halfway && currentPrice > wickBox.bottom) {
+    return { shouldTrade: true, tradeType: 'SELL' };
+  }
+  
+  // If price has rejected the halfway mark, this is a potential buy
+  if (currentPrice < wickBox.bottom) {
+    return { shouldTrade: true, tradeType: 'BUY' };
+  }
+  
+  return { shouldTrade: false, tradeType: null };
 };
 
 // Calculate position size based on risk percentage
@@ -163,6 +208,17 @@ export const getCurrentSession = (): string => {
   }
   
   return 'Closed';
+};
+
+// Check if current pair should be traded in current session
+export const shouldTradeInCurrentSession = (symbol: string, session: string): boolean => {
+  // Only trade after Asian session
+  if (session !== 'London' && session !== 'New York') {
+    return false;
+  }
+  
+  // Only trade specific pairs
+  return ['GBPJPY', 'USDJPY', 'XAUUSD'].includes(symbol);
 };
 
 // Function to format account balance

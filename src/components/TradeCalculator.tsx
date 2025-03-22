@@ -3,16 +3,19 @@ import React, { useState, useEffect } from 'react';
 import { CandleData } from '@/utils/mockData';
 import { 
   calculatePositionSize, 
-  calculateLevels,
-  isValidTrade,
+  calculateWickBox,
+  shouldExecuteTrade,
+  shouldTradeInCurrentSession,
+  getCurrentSession,
   formatPrice,
-  getPipValue,
-  formatCurrency
+  getPipValue
 } from '@/utils/tradingHelpers';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
+import PriceInfo from './trade/PriceInfo';
+import RiskSettings from './trade/RiskSettings';
+import TradeDirectionSelector from './trade/TradeDirectionSelector';
+import TradeDetails from './trade/TradeDetails';
+import WickBoxInfo from './trade/WickBoxInfo';
 
 interface TradeCalculatorProps {
   symbol: string;
@@ -23,18 +26,17 @@ interface TradeCalculatorProps {
   sma50: number;
   rsi: number;
   lastCandle?: CandleData;
+  candles: CandleData[];
   onPlaceTrade: (tradeDetails: any) => void;
 }
 
 const TradeCalculator: React.FC<TradeCalculatorProps> = ({
   symbol,
   currentPrice,
-  supportLevel,
-  resistanceLevel,
   accountBalance,
   sma50,
   rsi,
-  lastCandle,
+  candles,
   onPlaceTrade,
 }) => {
   const { toast } = useToast();
@@ -48,22 +50,34 @@ const TradeCalculator: React.FC<TradeCalculatorProps> = ({
   const [potentialProfit1, setPotentialProfit1] = useState(0);
   const [potentialProfit2, setPotentialProfit2] = useState(0);
   const [isTradeValid, setIsTradeValid] = useState(false);
+  const [wickBox, setWickBox] = useState({ top: 0, bottom: 0, halfway: 0 });
   
   const pipValue = getPipValue(symbol);
+  const currentSession = getCurrentSession();
   
-  // Check if we should recommend a trade type based on price vs levels from 15 min timeframe
+  // Calculate the wick box when candles change
   useEffect(() => {
-    if (!lastCandle) return;
+    if (candles.length < 2) return;
     
-    // Using 15-minute timeframe for trade triggers
-    if (lastCandle.close > resistanceLevel) {
-      setTradeType('BUY');
-    } else if (lastCandle.close < supportLevel) {
-      setTradeType('SELL');
+    const calculatedWickBox = calculateWickBox(candles);
+    setWickBox(calculatedWickBox);
+    
+    // Check if we should execute a trade based on the wick box strategy
+    const { shouldTrade, tradeType: recommendedTradeType } = shouldExecuteTrade(
+      currentPrice,
+      calculatedWickBox
+    );
+    
+    // Check if the pair should be traded in current session
+    const validSession = shouldTradeInCurrentSession(symbol, currentSession);
+    
+    if (shouldTrade && recommendedTradeType && validSession) {
+      setTradeType(recommendedTradeType);
     } else {
       setTradeType(null);
+      setIsTradeValid(false);
     }
-  }, [lastCandle, supportLevel, resistanceLevel]);
+  }, [candles, currentPrice, symbol, currentSession]);
   
   // Calculate trade details when type changes
   useEffect(() => {
@@ -72,9 +86,8 @@ const TradeCalculator: React.FC<TradeCalculatorProps> = ({
       return;
     }
     
-    // Validate the trade with technical indicators
-    const valid = isValidTrade(tradeType, currentPrice, sma50, rsi);
-    setIsTradeValid(valid);
+    // Set trade as valid since we've already checked conditions when setting the tradeType
+    setIsTradeValid(true);
     
     // Calculate risk amount
     const risk = (accountBalance * riskPercentage) / 100;
@@ -124,7 +137,7 @@ const TradeCalculator: React.FC<TradeCalculatorProps> = ({
     
     setPotentialProfit1(profit1);
     setPotentialProfit2(profit2);
-  }, [tradeType, currentPrice, accountBalance, pipValue, sma50, rsi, riskPercentage]);
+  }, [tradeType, currentPrice, accountBalance, pipValue, riskPercentage]);
   
   const handlePlaceTrade = () => {
     if (!tradeType || !isTradeValid) return;
@@ -155,133 +168,38 @@ const TradeCalculator: React.FC<TradeCalculatorProps> = ({
     <div className="glass-panel p-6 space-y-6">
       <h3 className="text-lg font-medium">Trade Calculator</h3>
       
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label htmlFor="currentPrice">Current Price</Label>
-          <Input 
-            id="currentPrice" 
-            value={formatPrice(currentPrice, symbol)} 
-            readOnly 
-            className="bg-secondary/50"
-          />
-        </div>
-        
-        <div>
-          <Label htmlFor="accountBalance">Account Balance</Label>
-          <Input 
-            id="accountBalance" 
-            value={formatCurrency(accountBalance)} 
-            readOnly 
-            className="bg-secondary/50"
-          />
-        </div>
-      </div>
+      <PriceInfo 
+        currentPrice={currentPrice}
+        accountBalance={accountBalance}
+        symbol={symbol}
+      />
       
-      <div>
-        <Label htmlFor="riskPercentage">Risk Percentage</Label>
-        <div className="flex items-center mt-1">
-          <Input 
-            id="riskPercentage" 
-            type="number" 
-            min="0.1"
-            max="5"
-            step="0.1"
-            value={riskPercentage} 
-            onChange={(e) => setRiskPercentage(parseFloat(e.target.value) || 1)}
-            className="focus-ring"
-          />
-          <span className="ml-2">%</span>
-        </div>
-        <p className="mt-1 text-xs text-neutral-500">Risk amount: {formatCurrency(riskAmount)}</p>
-      </div>
+      <WickBoxInfo wickBox={wickBox} symbol={symbol} />
       
-      <div className="space-y-2">
-        <p className="font-medium">Trade Direction</p>
-        <div className="flex space-x-3">
-          <Button
-            variant={tradeType === 'BUY' ? "default" : "outline"}
-            onClick={() => setTradeType('BUY')}
-            className={`w-full ${tradeType === 'BUY' ? 'buy-button' : 'neutral-button'}`}
-          >
-            Buy
-          </Button>
-          <Button
-            variant={tradeType === 'SELL' ? "default" : "outline"}
-            onClick={() => setTradeType('SELL')}
-            className={`w-full ${tradeType === 'SELL' ? 'sell-button' : 'neutral-button'}`}
-          >
-            Sell
-          </Button>
-        </div>
-      </div>
+      <RiskSettings
+        riskPercentage={riskPercentage}
+        riskAmount={riskAmount}
+        setRiskPercentage={setRiskPercentage}
+      />
+      
+      <TradeDirectionSelector
+        tradeType={tradeType}
+        setTradeType={setTradeType}
+      />
       
       {tradeType && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="stopLoss">Stop Loss (50 pips)</Label>
-              <Input 
-                id="stopLoss" 
-                value={formatPrice(stopLoss, symbol)} 
-                readOnly 
-                className="bg-secondary/50 text-loss"
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="positionSize">Position Size</Label>
-              <Input 
-                id="positionSize" 
-                value={positionSize.toFixed(2)} 
-                readOnly 
-                className="bg-secondary/50"
-              />
-            </div>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <Label htmlFor="takeProfit1">Take Profit 1 (1.5R)</Label>
-              <Input 
-                id="takeProfit1" 
-                value={formatPrice(takeProfit1, symbol)} 
-                readOnly 
-                className="bg-secondary/50 text-profit"
-              />
-              <p className="mt-1 text-xs text-profit">
-                Potential profit: {formatCurrency(potentialProfit1)}
-              </p>
-            </div>
-            
-            <div>
-              <Label htmlFor="takeProfit2">Take Profit 2 (2R)</Label>
-              <Input 
-                id="takeProfit2" 
-                value={formatPrice(takeProfit2, symbol)} 
-                readOnly 
-                className="bg-secondary/50 text-profit"
-              />
-              <p className="mt-1 text-xs text-profit">
-                Potential profit: {formatCurrency(potentialProfit2)}
-              </p>
-            </div>
-          </div>
-          
-          <div className="pt-2">
-            {!isTradeValid ? (
-              <div className="text-sm text-loss bg-loss/10 p-3 rounded">
-                This trade doesn't meet the strategy criteria. Check indicators and price levels.
-              </div>
-            ) : (
-              <Button 
-                onClick={handlePlaceTrade}
-                className={`w-full ${tradeType === 'BUY' ? 'buy-button' : 'sell-button'}`}
-              >
-                Place {tradeType} Order
-              </Button>
-            )}
-          </div>
-        </div>
+        <TradeDetails
+          symbol={symbol}
+          tradeType={tradeType}
+          stopLoss={stopLoss}
+          positionSize={positionSize}
+          takeProfit1={takeProfit1}
+          takeProfit2={takeProfit2}
+          potentialProfit1={potentialProfit1}
+          potentialProfit2={potentialProfit2}
+          isTradeValid={isTradeValid}
+          handlePlaceTrade={handlePlaceTrade}
+        />
       )}
     </div>
   );
